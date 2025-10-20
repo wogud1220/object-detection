@@ -1,0 +1,20 @@
+# pip install -r requirements.txt
+# 기본 언어 및 데이터 처리
+python>=3.8
+numpy>=1.23.0
+pandas>=1.5.0
+
+# 이미지 처리 및 시각화
+opencv-python>=4.7.0
+Pillow>=10.0.0
+matplotlib>=3.6.0
+
+# 딥러닝 프레임워크
+torch>=2.0.0
+torchvision>=0.15.0
+
+# 추가 도구 (선택)
+scikit-learn>=1.2.0       # 성능 평가용
+albumentations>=1.3.0     # 이미지 증강
+tqdm>=4.64.0              # 진행률 표시
+pyyaml>=6.0               # 설정 파일 관리
