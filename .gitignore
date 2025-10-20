@@ -1,0 +1,39 @@
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual env
+.venv/
+env/
+venv/
+
+# Deep Learning
+*.pth
+*.pt
+*.pkl
+wandb/
+runs/
+logs/
+outputs/
+
+# Data
+data/
+datasets/
+images/
+*.csv
+*.xlsx
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
+
+# Build / dist
+build/
+dist/
+
+# System
+.env
