@@ -3,6 +3,7 @@ from pathlib import Path
 
 """
     root_dir 하위의 이미지와 json을 읽어들여서, 파일 갯수를 구한다.
+    그런데, 필요 없을듯.....
 """
 
 json_cnt = 0
