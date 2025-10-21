@@ -23,7 +23,7 @@ from collections import Counter
 
 import torch
 
-from src.data.PillDataset import PillDataset
+from src.datas.PillDataset import PillDataset
 from src.utils import util
 from src.utils.albumentations_A import train_compose
 from src.utils.albumentations_A import val_compose
