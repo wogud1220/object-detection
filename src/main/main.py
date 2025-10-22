@@ -1,11 +1,19 @@
 import os
 import json
+import pandas as pd
+
+import torch
+from PIL import Image, ImageDraw, ImageFont
+import cv2
+import numpy as np
 
 from tqdm import tqdm
-import pandas as pd
 from collections import Counter
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
+
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -16,14 +24,15 @@ from collections import defaultdict
 from ultralytics import YOLO
 from IPython.display import Image as IPImage, display
 
-import torch
-
 from src.datas.PillDataset import PillDataset
 #from src.utils import util
 from src.utils.make_yaml import make_class_list
 from src.utils.make_yaml import get_class_name_en
 from src.utils.util import visualize_annotations
 from src.utils.util import convert_to_yolo_format
+from src.utils.util import check_image_annotations
+from src.utils.font import set_font
+from src.utils.font import add_font
 from src.utils.albumentations_A import train_compose
 from src.utils.albumentations_A import val_compose
 from src.utils.chageBbox import change_bboxes
@@ -70,17 +79,19 @@ def main():
     """ # 데이터 탐색 """
     images_df, categories_df, annotations_df = search_data(train_data)
 
-
     """  TEST   """
     #get_class_name_en(categories_df, images_df)
 
+    ### FONT ###
+    set_font()
+    add_font()
 
     """ # 어노테이션 시각화 """
     process_visualize_annotations(images_df, categories_df, annotations_df)
 
     # 위에서 본 이미지들 확인
-    util.check_image_annotations(1023, images_df, annotations_df, categories_df)  # 첫 번째 이미지
-    util.check_image_annotations(599, images_df, annotations_df, categories_df)   # 두 번째 이미지
+    check_image_annotations(1023, images_df, annotations_df, categories_df)  # 첫 번째 이미지
+    check_image_annotations(599, images_df, annotations_df, categories_df)   # 두 번째 이미지
 
     """ JSON 파일을 확인 """
     check_json(all_json_files)
@@ -101,10 +112,18 @@ def main():
     model = make_model()
 
     """ 모델 학습 """
-    make_train(model, yaml_path)
+    train_model(model, yaml_path)
 
     """ 모델 결과 """
-    predict_model()
+    result_model()
+
+    # GPU 설정
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+
+    process_visualize_clean(model, val_images_df, device)
+
+    predict_model(model, val_images_df, val_annotations_df, categories_df, device, category_id_mapping)
 
 def check_datapath():
     # 경로 확인
@@ -178,8 +197,8 @@ def process_annotation(TRAIN_ANN_DIR="/content/data/train_annotations"):
             if 'images' in data and len(data['images']) > 0:
                 img = data['images'][0]
                 file_name = img['file_name']
-                dl_name = img['dl_name']
-                dl_name_en = img['dl_name_en']
+                #dl_name = img['dl_name']
+                #dl_name_en = img['dl_name_en']
 
                 # 이미지 정보는 한 번만 저장 (중복 방지)
                 if file_name not in images_dict:
@@ -187,8 +206,8 @@ def process_annotation(TRAIN_ANN_DIR="/content/data/train_annotations"):
                         'file_name': file_name,
                         'width': img.get('width'),
                         'height': img.get('height'),
-                        'dl_name': img.get('dl_name'),
-                        'dl_name_en': img.get('dl_name_en'),
+                        #'dl_name': img.get('dl_name'),
+                        #'dl_name_en': img.get('dl_name_en'),
                     }
 
             # Annotation 수집 (같은 file_name끼리 묶음)
@@ -301,13 +320,13 @@ def search_data(train_data):
 
     return images_df, categories_df, annotations_df
 
-def setting_font():
-    #path = '/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf'  # 나눔 고딕
-    path = 'C:/Windows/Fonts/나눔고딕/NanumGothic.ttf'  # 나눔 고딕
-    font_name = fm.FontProperties(fname=path, size=10).get_name()  # 기본 폰트 사이즈 : 10
-    plt.rc('font', family=font_name)
-
-    fm.fontManager.addfont(path)
+# def setting_font():
+#     #path = '/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf'  # 나눔 고딕
+#     path = globals.FONT_PATH
+#     font_name = fm.FontProperties(fname=path, size=10).get_name()  # 기본 폰트 사이즈 : 10
+#     plt.rc('font', family=font_name)
+#
+#     fm.fontManager.addfont(path)
 
 def process_visualize_annotations(images_df, categories_df, annotations_df):
     valid_image_ids = annotations_df['image_id'].unique()
@@ -339,7 +358,7 @@ def process_visualize_annotations(images_df, categories_df, annotations_df):
         sample_ids = img_obj_counts_df['image_id'].sample(min(3, len(img_obj_counts_df))).values
 
     for img_id in sample_ids:
-        util.visualize_annotations(TRAIN_IMG_DIR,
+        visualize_annotations(TRAIN_IMG_DIR,
                         images_df,
                         annotations_df,
                         categories_df,
@@ -550,40 +569,387 @@ def train_model(model, yaml_path):
     print("\n 학습 완료!")
     print(f" 결과 저장 위치: {BASE_DIR}/yolo_runs/pill_detection")
 
-def predict_model():
+def result_model():
+    # 한글 폰트 설정
+    plt.rcParams['font.family'] = globals.FONT_TYPE  ##'NanumBarunGothic'
+    plt.rcParams['axes.unicode_minus'] = False
+
+    # 폰트 경로 지정 (윈도우 기본 폰트 폴더)
+    font_path = globals.FONT_PATH
+
+    # FontProperties 객체 생성
+    font_prop = fm.FontProperties(fname=font_path, size=15)
+
+    #font_name = fm.FontProperties(fname=font_path).get_name()
+    #plt.rc('font', family=font_name)
+
     # 결과 디렉터리 설정
     result_dir = f"{BASE_DIR}/yolo_runs/pill_detection"
 
     print("📈 YOLOv8 학습 결과 요약")
-    print("───────────────────────────────")
+    print("=" * 60)
+
 
     # 1️⃣ Loss 그래프
-    loss_img = f"{result_dir}/results.png"
-    if os.path.exists(loss_img):
+    results_img = f"{result_dir}/results.png"
+    if os.path.exists(results_img):
         print("\n1. 🔹 Loss 변화 그래프")
-        display(IPImage(filename=loss_img))
+        img = mpimg.imread(results_img)
+        plt.figure(figsize=(14, 8))
+        plt.imshow(img)
+        plt.axis('off')
+        plt.title('학습 결과 (Loss, mAP, Precision, Recall)', fontsize=14, pad=10, fontproperties=font_prop)
+        plt.tight_layout()
+        plt.show()
     else:
-        print("❌ Loss 그래프(results.png)를 찾을 수 없습니다.")
+        print("❌ results.png를 찾을 수 없습니다.")
 
     # 2️⃣ Confusion Matrix
     cm_img = f"{result_dir}/confusion_matrix.png"
     if os.path.exists(cm_img):
         print("\n2. 🔹 Confusion Matrix")
-        display(IPImage(filename=cm_img))
+        img = mpimg.imread(cm_img)
+        plt.figure(figsize=(12, 10))
+        plt.imshow(img)
+        plt.axis('off')
+        plt.title('혼동 행렬 (Confusion Matrix)', fontsize=14, pad=10, fontproperties=font_prop)
+        plt.tight_layout()
+        plt.show()
     else:
-        print("❌ Confusion Matrix 이미지를 찾을 수 없습니다.")
+        print("❌ confusion_matrix.png를 찾을 수 없습니다.")
 
-    # 3️⃣ Validation 예측 결과 샘플
-    pred_img = f"{result_dir}/val_batch0_pred.jpg"
-    if os.path.exists(pred_img):
-        print("\n3. 🔹 Validation 예측 결과 샘플")
-        display(IPImage(filename=pred_img))
+    # 3️⃣ Box Precision Curve (올바른 파일명!)
+    boxp_img = f"{result_dir}/BoxP_curve.png"
+    if os.path.exists(boxp_img):
+        print("\n3. 🔹 Box Precision Curve")
+        img = mpimg.imread(boxp_img)
+        plt.figure(figsize=(10, 8))
+        plt.imshow(img)
+        plt.axis('off')
+        plt.title('정밀도 곡선 (Precision Curve)', fontsize=14, pad=10, fontproperties=font_prop)
+        plt.tight_layout()
+        plt.show()
     else:
-        print("❌ 예측 결과 이미지(val_batch0_pred.jpg)를 찾을 수 없습니다.")
+        print("❌ BoxP_curve.png를 찾을 수 없습니다.")
 
-    # 4️⃣ Best 모델 경로
+    # 4️⃣ Box F1 Curve (올바른 파일명!)
+    boxf1_img = f"{result_dir}/BoxF1_curve.png"
+    if os.path.exists(boxf1_img):
+        print("\n4. 🔹 Box F1 Score Curve")
+        img = mpimg.imread(boxf1_img)
+        plt.figure(figsize=(10, 8))
+        plt.imshow(img)
+        plt.axis('off')
+        plt.title('F1 점수 곡선 (F1 Curve)', fontsize=14, pad=10, fontproperties=font_prop)
+        plt.tight_layout()
+        plt.show()
+    else:
+        print("❌ BoxF1_curve.png를 찾을 수 없습니다.")
+
+    # 5️⃣ Box Precision-Recall Curve
+    boxpr_img = f"{result_dir}/BoxPR_curve.png"
+    if os.path.exists(boxpr_img):
+        print("\n5. 🔹 Precision-Recall Curve")
+        img = mpimg.imread(boxpr_img)
+        plt.figure(figsize=(10, 8))
+        plt.imshow(img)
+        plt.axis('off')
+        plt.title('정밀도-재현율 곡선 (PR Curve)', fontsize=14, pad=10, fontproperties=font_prop)
+        plt.tight_layout()
+        plt.show()
+    else:
+        print("❌ BoxPR_curve.png를 찾을 수 없습니다.")
+
+    # 6️⃣ Validation 예측 결과
+    val_batch0 = f"{result_dir}/val_batch0_pred.jpg"
+    if os.path.exists(val_batch0):
+        print("\n6. 🔹 Validation 예측 결과 (Batch 0)")
+        img = mpimg.imread(val_batch0)
+        plt.figure(figsize=(16, 12))
+        plt.imshow(img)
+        plt.axis('off')
+        plt.title('검증 데이터 예측 결과', fontsize=14, pad=10, fontproperties=font_prop)
+        plt.tight_layout()
+        plt.show()
+    else:
+        print("❌ val_batch0_pred.jpg를 찾을 수 없습니다.")
+
+    # 7️⃣ 최종 성능 지표
+    print("\n" + "=" * 60)
+    print("📊 최종 성능 지표")
+    print("=" * 60)
+
+    csv_path = f"{result_dir}/results.csv"
+    if os.path.exists(csv_path):
+        import pandas as pd
+        results_df = pd.read_csv(csv_path)
+        results_df.columns = results_df.columns.str.strip()
+
+        # 마지막 epoch
+        last_row = results_df.iloc[-1]
+
+        print(f"\n🏆 최종 Epoch {int(last_row['epoch'])} 결과:")
+        print(f"  • mAP50-95: {last_row['metrics/mAP50-95(B)']:.4f} ")
+        print(f"  • mAP50:    {last_row['metrics/mAP50(B)']:.4f}")
+        print(f"  • Precision: {last_row['metrics/precision(B)']:.4f}")
+        print(f"  • Recall:    {last_row['metrics/recall(B)']:.4f}")
+
+        # Best 값
+        best_map = results_df['metrics/mAP50-95(B)'].max()
+        best_epoch = results_df['metrics/mAP50-95(B)'].idxmax() + 1
+        print(f"\n🥇 Best mAP50-95: {best_map:.4f} (Epoch {best_epoch})")
+    else:
+        print("❌ results.csv를 찾을 수 없습니다.")
+
+    # 8️⃣ Best 모델 경로
     best_model = f"{result_dir}/weights/best.pt"
-    print(f"\n✅ Best 모델 경로:\n{best_model if os.path.exists(best_model) else '❌ 파일이 없습니다.'}")
+    print(f"\n💾 Best 모델 경로:")
+    if os.path.exists(best_model):
+        print(f"   ✅ {best_model}")
+        size_mb = os.path.getsize(best_model) / (1024 * 1024)
+        print(f"   📦 파일 크기: {size_mb:.2f} MB")
+    else:
+        print(f"   ❌ 파일을 찾을 수 없습니다.")
+
+    print("\n" + "=" * 60)
+    print("✅ 학습 결과 요약 완료!")
+    print("=" * 60)
+
+def visualize_clean(img_path, model, device, conf_threshold=0.35, iou_threshold=0.5):
+    """
+    겹침 없는 깔끔한 시각화
+    """
+
+    # 예측 (threshold 조정)
+    results = model.predict(
+        img_path,
+        conf=conf_threshold,    # 낮은 confidence 제외
+        iou=iou_threshold,      # 겹치는 박스 제거
+        max_det=4,              # 최대 4개
+        device=device,
+        verbose=False
+    )
+    result = results[0]
+
+    # 이미지 로드
+    img = cv2.imread(img_path)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    # PIL로 변환
+    img_pil = Image.fromarray(img)
+    draw = ImageDraw.Draw(img_pil)
+
+    # 폰트 로드
+    try:
+        font = ImageFont.truetype(globals.FONT_PATH, 16)
+        #font = ImageFont.truetype('/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf', 16)
+    except:
+        font = ImageFont.load_default()
+
+    # 박스별로 위치 조정하여 겹침 방지
+    boxes_info = []
+    for box in result.boxes:
+        x1, y1, x2, y2 = map(int, box.xyxy[0])
+        conf = float(box.conf[0])
+        cls = int(box.cls[0])
+        class_name = result.names[cls]
+
+        # 이름 짧게
+        if len(class_name) > 12:
+            class_name = class_name[:12] + '...'
+
+        boxes_info.append({
+            'box': (x1, y1, x2, y2),
+            'conf': conf,
+            'cls': cls,
+            'name': class_name
+        })
+
+    # confidence 높은 순으로 정렬
+    boxes_info.sort(key=lambda x: x['conf'], reverse=True)
+
+    # 그리기
+    for idx, info in enumerate(boxes_info):
+        x1, y1, x2, y2 = info['box']
+
+        # 색상
+        np.random.seed(info['cls'])
+        color = tuple(np.random.randint(100, 255, 3).tolist())
+
+        # 박스
+        draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
+
+        # 라벨 위치 조정 (위쪽에 공간 없으면 아래로)
+        label = f"{info['name']} {info['conf']:.2f}"
+        bbox = draw.textbbox((0, 0), label, font=font)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+
+        # 위쪽 공간 확인
+        if y1 - text_h - 8 < 0:
+            # 아래쪽에 표시
+            text_y = y2 + 2
+            bg_y1, bg_y2 = y2, y2 + text_h + 6
+        else:
+            # 위쪽에 표시
+            text_y = y1 - text_h - 4
+            bg_y1, bg_y2 = y1 - text_h - 8, y1
+
+        # 배경
+        draw.rectangle([x1, bg_y1, x1 + text_w + 6, bg_y2], fill=color)
+
+        # 텍스트
+        draw.text((x1 + 3, text_y), label, fill=(255, 255, 255), font=font)
+
+    return np.array(img_pil)
+
+def process_visualize_clean(model, val_images_df, device):
+    # 샘플 시각화
+    sample_images = val_images_df.sample(6)
+
+    fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+    axes = axes.flatten()
+
+    for idx, (_, img_info) in enumerate(sample_images.iterrows()):
+        img_path = os.path.join(TRAIN_IMG_DIR, img_info['file_name'])
+
+        img_result = visualize_clean(
+            img_path,
+            model,
+            device,
+            conf_threshold=0.4,
+            iou_threshold=0.5
+        )
+
+        axes[idx].imshow(img_result)
+        axes[idx].set_title(f"ID: {img_info['id']}", fontsize=11)
+        axes[idx].axis('off')
+
+    plt.tight_layout()
+    plt.savefig(f"{BASE_DIR}/yolo_clean_predictions.png", dpi=120)
+    plt.show()
+
+
+def predict_model(model, val_images_df, val_annotations_df, categories_df, device, category_id_mapping):
+    print("🔬 정확한 mAP@[0.75:0.95] 계산")
+    print("=" * 60)
+
+    # 1. Validation 데이터로 예측
+    predictions_list = []
+
+    print("\n📊 Validation 예측 중...")
+    for _, img_info in val_images_df.iterrows():
+        img_id = int(img_info['id'])
+        img_path = os.path.join(TRAIN_IMG_DIR, img_info['file_name'])
+
+        # 예측
+        results = model.predict(img_path, conf=0.001, device=device, verbose=False)
+        result = results[0]
+
+        # COCO 형식으로 변환
+        for box in result.boxes:
+            x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+            conf = float(box.conf[0])
+            yolo_cls = int(box.cls[0])
+
+            # 원본 카테고리 ID
+            category_id = None
+            for orig_id, yolo_id in category_id_mapping.items():
+                if yolo_id == yolo_cls:
+                    category_id = int(orig_id)
+                    break
+
+            if category_id is None:
+                continue
+
+            # COCO bbox 형식: [x, y, width, height]
+            predictions_list.append({
+                'image_id': img_id,
+                'category_id': category_id,
+                'bbox': [float(x1), float(y1), float(x2 - x1), float(y2 - y1)],
+                'score': conf
+            })
+
+    print(f"✅ 총 {len(predictions_list)}개 예측 완료")
+
+    # 2. COCO GT 준비 (완전한 형식)
+    gt_annotations = {
+        'info': {
+            'description': 'Pill Detection Validation',
+            'version': '1.0',
+            'year': 2025
+        },
+        'licenses': [],
+        'images': [],
+        'annotations': [],
+        'categories': []
+    }
+
+    # 이미지 정보
+    for _, img in val_images_df.iterrows():
+        gt_annotations['images'].append({
+            'id': int(img['id']),
+            'file_name': str(img['file_name']),
+            'width': int(img['width']),
+            'height': int(img['height'])
+        })
+
+    # Annotation 정보
+    for _, ann in val_annotations_df.iterrows():
+        gt_annotations['annotations'].append({
+            'id': int(ann['id']),
+            'image_id': int(ann['image_id']),
+            'category_id': int(ann['category_id']),
+            'bbox': [float(x) for x in ann['bbox']],
+            'area': float(ann['area']),
+            'iscrowd': int(ann.get('iscrowd', 0))
+        })
+
+    # 카테고리 정보
+    for _, cat in categories_df.iterrows():
+        gt_annotations['categories'].append({
+            'id': int(cat['id']),
+            'name': str(cat['name'])
+        })
+
+    print(f"✅ GT 데이터 준비 완료")
+
+    # 3. JSON 저장
+    gt_path = f"{BASE_DIR}/val_gt_coco.json"
+    pred_path = f"{BASE_DIR}/val_pred_coco.json"
+
+    with open(gt_path, 'w') as f:
+        json.dump(gt_annotations, f, indent=2)
+
+    with open(pred_path, 'w') as f:
+        json.dump(predictions_list, f, indent=2)
+
+    print(f"✅ JSON 파일 저장 완료")
+    print(f"   GT: {gt_path}")
+    print(f"   Pred: {pred_path}")
+
+    # 4. COCO 평가
+    print("\n📊 COCO 평가 실행 중...")
+    coco_gt = COCO(gt_path)
+    coco_dt = coco_gt.loadRes(pred_path)
+
+    # mAP@[0.75:0.95] 계산
+    coco_eval = COCOeval(coco_gt, coco_dt, 'bbox')
+    coco_eval.params.iouThrs = np.array([0.75, 0.80, 0.85, 0.90, 0.95])
+    coco_eval.evaluate()
+    coco_eval.accumulate()
+
+    print("\n🎯 대회 평가 지표 (mAP@[0.75:0.95]):")
+    print("=" * 60)
+    coco_eval.summarize()
+
+    # mAP 추출
+    map_75_95_exact = coco_eval.stats[0]
+
+    print(f"\n🏆 최종 결과:")
+    print(f"  mAP@[0.75:0.95]: {map_75_95_exact:.4f} ")
+    print(f"  (IoU 0.75, 0.80, 0.85, 0.90, 0.95의 평균)")
+    print("=" * 60)
 
 if __name__ == "__main__":
     main()
