@@ -1,7 +1,9 @@
 import os
 import json
-from tqdm import tqdm
 
+from tqdm import tqdm
+import pandas as pd
+from collections import Counter
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 
@@ -9,22 +11,19 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib.image as mpimg
 import matplotlib.font_manager as fm
-import warnings
 
 from collections import defaultdict
-
 from ultralytics import YOLO
-import yaml
-
 from IPython.display import Image as IPImage, display
-
-import pandas as pd
-from collections import Counter
 
 import torch
 
 from src.datas.PillDataset import PillDataset
-from src.utils import util
+#from src.utils import util
+from src.utils.make_yaml import make_class_list
+from src.utils.make_yaml import get_class_name_en
+from src.utils.util import visualize_annotations
+from src.utils.util import convert_to_yolo_format
 from src.utils.albumentations_A import train_compose
 from src.utils.albumentations_A import val_compose
 from src.utils.chageBbox import change_bboxes
@@ -70,6 +69,11 @@ def main():
     """ # 데이터 탐색 """
     images_df, categories_df, annotations_df = search_data(train_data)
 
+
+    """  TEST   """
+    #get_class_name_en(categories_df, images_df)
+
+
     """ # 어노테이션 시각화 """
     process_visualize_annotations(images_df, categories_df, annotations_df)
 
@@ -86,7 +90,7 @@ def main():
     train_success, val_success = convert_data(train_images_df, val_images_df, train_annotations_df, val_annotations_df, category_id_mapping)
 
     """ 클래스 이름 리스트 생성 """
-    yaml_path = make_class_list(categories_df, num_classes, train_success, val_success)
+    yaml_path = make_class_list(categories_df, images_df, num_classes, train_success, val_success, YOLO_DIR)
 
     """ 모델 인스턴스 생성 """
     model = make_model()
@@ -169,6 +173,8 @@ def process_annotation(TRAIN_ANN_DIR="/content/data/train_annotations"):
             if 'images' in data and len(data['images']) > 0:
                 img = data['images'][0]
                 file_name = img['file_name']
+                dl_name = img['dl_name']
+                dl_name_en = img['dl_name_en']
 
                 # 이미지 정보는 한 번만 저장 (중복 방지)
                 if file_name not in images_dict:
@@ -176,6 +182,8 @@ def process_annotation(TRAIN_ANN_DIR="/content/data/train_annotations"):
                         'file_name': file_name,
                         'width': img.get('width'),
                         'height': img.get('height'),
+                        'dl_name': img.get('dl_name'),
+                        'dl_name_en': img.get('dl_name_en'),
                     }
 
             # Annotation 수집 (같은 file_name끼리 묶음)
@@ -326,7 +334,7 @@ def process_visualize_annotations(images_df, categories_df, annotations_df):
         sample_ids = img_obj_counts_df['image_id'].sample(min(3, len(img_obj_counts_df))).values
 
     for img_id in sample_ids:
-        util.visualize_annotations(TRAIN_IMG_DIR,
+        visualize_annotations(TRAIN_IMG_DIR,
                           images_df,
                           annotations_df,
                           categories_df,
@@ -470,7 +478,7 @@ def convert_data(train_images_df, val_images_df, train_annotations_df, val_annot
     print("📝 Train 데이터 변환 중...")
     train_success = 0
     for _, img_info in tqdm(train_images_df.iterrows(), total=len(train_images_df)):
-        if util.convert_to_yolo_format(
+        if convert_to_yolo_format(
                 img_info,
                 train_annotations_df,
                 f"{YOLO_DIR}/images/train",
@@ -486,7 +494,7 @@ def convert_data(train_images_df, val_images_df, train_annotations_df, val_annot
     print("\n📝 Val 데이터 변환 중...")
     val_success = 0
     for _, img_info in tqdm(val_images_df.iterrows(), total=len(val_images_df)):
-        if util.convert_to_yolo_format(
+        if convert_to_yolo_format(
                 img_info,
                 val_annotations_df,
                 f"{YOLO_DIR}/images/val",
@@ -499,37 +507,6 @@ def convert_data(train_images_df, val_images_df, train_annotations_df, val_annot
     print(f"✅ Val 데이터 변환 완료: {val_success}/{len(val_images_df)}개")
 
     return train_success, val_success
-
-def make_class_list(categories_df, num_classes, train_success, val_success):
-    # 클래스 이름 리스트 생성
-    class_names = []
-    for cat_id in sorted(categories_df['id'].unique()):
-        cat_name = categories_df[categories_df['id'] == cat_id]['name'].values[0]
-        class_names.append(cat_name)
-
-    # data.yaml 내용
-    data_yaml = {
-        'path': YOLO_DIR,
-        'train': 'images/train',
-        'val': 'images/val',
-        'nc': num_classes,
-        'names': class_names
-    }
-
-    # 저장
-    yaml_path = f"{YOLO_DIR}/data.yaml"
-    with open(yaml_path, 'w', encoding='utf-8') as f:
-        yaml.dump(data_yaml, f, allow_unicode=True, sort_keys=False)
-
-    print("✅ data.yaml 생성 완료!")
-    print(f"경로: {yaml_path}")
-    print(f"\n📋 설정 내용:")
-    print(f"  - Train 이미지: {train_success}개")
-    print(f"  - Val 이미지: {val_success}개")
-    print(f"  - 클래스 수: {num_classes}개")
-    print(f"  - 클래스 예시: {class_names[:3]}")
-
-    return yaml_path
 
 def make_model():
     model = YOLO('yolov8m.pt')
