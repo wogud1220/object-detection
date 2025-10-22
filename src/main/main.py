@@ -28,6 +28,7 @@ from src.utils import util
 from src.utils.albumentations_A import train_compose
 from src.utils.albumentations_A import val_compose
 from src.utils.chageBbox import change_bboxes
+from src.utils.korean import set_korean_font
 
 # 데이터 기본 경로 (압축 해제한 위치)
 root_dir="C:/workspace/github/data" #임시 경로. 경로 정해지면 삭제 필요함.
@@ -42,6 +43,8 @@ TEST_IMG_DIR = f"{BASE_DIR}/test_images"
 YOLO_DIR = f"{BASE_DIR}/yolo_dataset"
 
 def main():
+    # 한글 폰트 설정
+    set_korean_font()
 
     """ main """
 
