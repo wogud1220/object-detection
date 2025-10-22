@@ -52,13 +52,13 @@ YOLO_DIR = f"{BASE_DIR}/yolo_dataset"
 
 def main():
 
-    """ main """
+    """ main start """
 
     """ # 경로 확인 """
     check_datapath()
 
     """ # 테스트 이미지 출력 """
-    show_testimages(TEST_IMG_DIR)
+    show_test_images(TEST_IMG_DIR)
 
     """ # Annotation 파일 수집 및 통합 """
     train_data, all_json_files = process_annotation(TRAIN_ANN_DIR)
@@ -125,6 +125,15 @@ def main():
 
     predict_model(model, val_images_df, val_annotations_df, categories_df, device, category_id_mapping)
 
+    predictions = predict_weight_model(device, TEST_IMG_DIR)
+
+    submission_df = result_submission(predictions, category_id_mapping)
+
+    save_submission(submission_df)
+
+    """ main end """
+
+
 def check_datapath():
     # 경로 확인
     print("📂 경로 설정 완료:")
@@ -141,12 +150,12 @@ def check_datapath():
         exists = "✅" if os.path.exists(path) else "❌"
         print(f"{exists} {name}: {path}")
 
-def show_testimages(TEST_IMG_DIR="/content/data/test_images"):
+def show_test_images(test_img_dir):
     # 테스트 이미지 폴더
     #TEST_IMG_DIR = "/content/data/test_images"
 
     # 파일 목록 불러오기
-    test_files = sorted(os.listdir(TEST_IMG_DIR))
+    test_files = sorted(os.listdir(test_img_dir))
 
     # 이미지가 있는지 확인
     print(f"총 테스트 이미지 개수: {len(test_files)}")
@@ -158,7 +167,7 @@ def show_testimages(TEST_IMG_DIR="/content/data/test_images"):
     # 시각화
     plt.figure(figsize=(12, 12))
     for i, img_name in enumerate(sample_files):
-        img_path = os.path.join(TEST_IMG_DIR, img_name)
+        img_path = os.path.join(test_img_dir, img_name)
         img = mpimg.imread(img_path)
         plt.subplot(3, 3, i + 1)
         plt.imshow(img)
@@ -169,12 +178,10 @@ def show_testimages(TEST_IMG_DIR="/content/data/test_images"):
     plt.show()
 
 # Annotation 파일 수집 및 통합
-def process_annotation(TRAIN_ANN_DIR="/content/data/train_annotations"):
-    #TRAIN_ANN_DIR = "/content/data/train_annotations"
-
+def process_annotation(train_ann_dir):
     # 모든 JSON 파일 찾기
     all_json_files = []
-    for root, dirs, files in os.walk(TRAIN_ANN_DIR):
+    for root, dirs, files in os.walk(train_ann_dir):
         for file in files:
             if file.endswith('.json'):
                 all_json_files.append(os.path.join(root, file))
@@ -320,14 +327,6 @@ def search_data(train_data):
 
     return images_df, categories_df, annotations_df
 
-# def setting_font():
-#     #path = '/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf'  # 나눔 고딕
-#     path = globals.FONT_PATH
-#     font_name = fm.FontProperties(fname=path, size=10).get_name()  # 기본 폰트 사이즈 : 10
-#     plt.rc('font', family=font_name)
-#
-#     fm.fontManager.addfont(path)
-
 def process_visualize_annotations(images_df, categories_df, annotations_df):
     valid_image_ids = annotations_df['image_id'].unique()
     print(f"📊 Annotation이 있는 이미지: {len(valid_image_ids)}개")
@@ -438,10 +437,6 @@ def process_data(images_df, categories_df, annotations_df):
         categories_df,
         transform=val_transform
     )
-
-    # # Collate 함수
-    # def collate_fn(batch):
-    #     return tuple(zip(*batch))
 
     # DataLoader
     train_loader = DataLoader(
@@ -950,6 +945,94 @@ def predict_model(model, val_images_df, val_annotations_df, categories_df, devic
     print(f"  mAP@[0.75:0.95]: {map_75_95_exact:.4f} ")
     print(f"  (IoU 0.75, 0.80, 0.85, 0.90, 0.95의 평균)")
     print("=" * 60)
+
+def predict_weight_model(device, test_img_dir):
+    # Best 모델 로드
+    best_model_path = f"{BASE_DIR}/yolo_runs/pill_detection/weights/best.pt"
+    model = YOLO(best_model_path)
+
+    # Test 이미지 목록
+    test_img_dir = f"{BASE_DIR}/test_images"
+    test_images = sorted(os.listdir(test_img_dir))
+
+    print(f"Test 이미지 개수: {len(test_images)}")
+
+    # 추론
+    predictions = {}
+    for img_name in tqdm(test_images):
+        img_path = os.path.join(test_img_dir, img_name)
+        results = model.predict(img_path, conf=0.51, iou=0.5, max_det=4, device=device, verbose=False)
+        predictions[img_name] = results[0]
+
+    return predictions
+
+def result_submission(predictions, category_id_mapping):
+    submission_rows = []
+    annotation_id = 1
+
+    for img_name, result in predictions.items():
+        # image_id: 파일명에서 숫자만 추출
+        image_id = int(img_name.replace('.png', '').replace('.jpg', ''))
+
+        # 각 박스마다 한 행
+        for box in result.boxes:
+            yolo_cls = int(box.cls[0])
+
+            # 원본 카테고리 ID
+            category_id = None
+            for orig_id, yolo_id in category_id_mapping.items():
+                if yolo_id == yolo_cls:
+                    category_id = int(orig_id)
+                    break
+
+            if category_id is None:
+                continue
+
+            score = float(box.conf[0])
+
+            # BBox
+            x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+            bbox_x = int(x1)
+            bbox_y = int(y1)
+            bbox_w = int(x2 - x1)
+            bbox_h = int(y2 - y1)
+
+            submission_rows.append({
+                'annotation_id': annotation_id,
+                'image_id': image_id,
+                'category_id': category_id,
+                'bbox_x': bbox_x,
+                'bbox_y': bbox_y,
+                'bbox_w': bbox_w,
+                'bbox_h': bbox_h,
+                'score': score
+            })
+
+            annotation_id += 1
+
+    # DataFrame
+    submission_df = pd.DataFrame(submission_rows)
+
+    print(submission_df.head(5))
+
+    return submission_df
+
+def save_submission(submission_df):
+    submission_path = f"{BASE_DIR}/submission.csv"
+    submission_df.to_csv(submission_path, index=False)
+
+    print(f"저장 완료: {submission_path}")
+
+    # 헤더 확인
+    with open(submission_path, 'r') as f:
+        print(f" 헤더:")
+        print(f.readline().strip())
+        print(f"첫 5줄:")
+        f.seek(0)
+        for i, line in enumerate(f):
+            if i < 6:
+                print(line.strip())
+
 
 if __name__ == "__main__":
     main()
