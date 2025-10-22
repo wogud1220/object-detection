@@ -27,11 +27,13 @@ from src.datas.PillDataset import PillDataset
 from src.utils import util
 from src.utils.albumentations_A import train_compose
 from src.utils.albumentations_A import val_compose
+from src.utils.chageBbox import change_bboxes
 
 import globals
 
 # 데이터 기본 경로 (압축 해제한 위치)
 BASE_DIR = globals.BASE_DIR
+JSON_PATH = f"{BASE_DIR}/train_combined.json"
 
 # 학습 및 테스트 데이터 경로
 TRAIN_IMG_DIR = f"{BASE_DIR}/train_images"
@@ -52,6 +54,19 @@ def main():
 
     """ # Annotation 파일 수집 및 통합 """
     train_data, all_json_files = process_annotation(TRAIN_ANN_DIR)
+    update_dict = {
+        2339: [95, 630, 350, 425],
+        2101: [600, 708, 235, 451],
+        3679: [88, 864, 250, 230],
+        805: [620, 770, 226, 224],
+        2789: [590, 295, 210, 215],
+        568: [365, 852, 200, 200],
+        2374: [115, 853, 227, 226],
+        2430: [637, 203, 224, 219],
+        2778: [125, 770, 315, 275],
+    }
+
+    change_bboxes(JSON_PATH, update_dict)
 
     """ # 데이터 탐색 """
     images_df, categories_df, annotations_df = search_data(train_data)
