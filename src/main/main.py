@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib.image as mpimg
 import matplotlib.font_manager as fm
-import warnings
+#import warnings
 
 from collections import defaultdict
 
@@ -28,9 +28,10 @@ from src.utils import util
 from src.utils.albumentations_A import train_compose
 from src.utils.albumentations_A import val_compose
 
+import globals
+
 # 데이터 기본 경로 (압축 해제한 위치)
-root_dir="C:/workspace/github/data" #임시 경로. 경로 정해지면 삭제 필요함.
-BASE_DIR = root_dir  #"/content/data" #이미지 경로는 여기에 설정.
+BASE_DIR = globals.BASE_DIR
 
 # 학습 및 테스트 데이터 경로
 TRAIN_IMG_DIR = f"{BASE_DIR}/train_images"
@@ -58,6 +59,10 @@ def main():
     """ # 어노테이션 시각화 """
     process_visualize_annotations(images_df, categories_df, annotations_df)
 
+    # 위에서 본 이미지들 확인
+    util.check_image_annotations(1023, images_df, annotations_df, categories_df)  # 첫 번째 이미지
+    util.check_image_annotations(599, images_df, annotations_df, categories_df)   # 두 번째 이미지
+
     """ JSON 파일을 확인 """
     check_json(all_json_files)
 
@@ -77,7 +82,7 @@ def main():
     model = make_model()
 
     """ 모델 학습 """
-    make_train(model, yaml_path)
+    train_model(model, yaml_path)
 
     """ 모델 결과 """
     predict_model()
@@ -312,10 +317,11 @@ def process_visualize_annotations(images_df, categories_df, annotations_df):
 
     for img_id in sample_ids:
         util.visualize_annotations(TRAIN_IMG_DIR,
-                          images_df,
-                          annotations_df,
-                          categories_df,
-                                   img_id, figsize=(8, 8))
+                        images_df,
+                        annotations_df,
+                        categories_df,
+                        img_id,
+                        figsize=(8, 8))
 
 def check_json(all_json_files):
     #  원본 JSON 파일에서 직접 확인
@@ -520,7 +526,7 @@ def make_model():
     model = YOLO('yolov8m.pt')
     return model
 
-def make_train(model, yaml_path):
+def train_model(model, yaml_path):
     # 학습 파라미터
     results = model.train(
         data=yaml_path,
@@ -529,7 +535,7 @@ def make_train(model, yaml_path):
         batch=8,  # 배치 크기
         patience=10,  # Early stopping patience (10 에폭 동안 개선 없으면 중단)
         save=True,  # 모델 저장
-        device='cpu', ##0 if torch.cuda.is_available() else 'cpu',  # GPU 자동 선택 ##임시로 cpu로 설정함.
+        device=0 if torch.cuda.is_available() else 'cpu',  # GPU 자동 선택
         project=f'{BASE_DIR}/yolo_runs',  # 결과 저장 폴더
         name='pill_detection',
         exist_ok=True,
