@@ -1,3 +1,4 @@
+import math
 import os
 import json
 import pandas as pd
@@ -35,13 +36,13 @@ from src.utils.font import set_font
 from src.utils.font import add_font
 from src.utils.albumentations_A import train_compose
 from src.utils.albumentations_A import val_compose
-from src.utils.chageBbox import change_bboxes
+from src.utils.chageBbox import change_bbox
 from src.utils.korean import set_korean_font
 
 import globals
 
 # 데이터 기본 경로 (압축 해제한 위치)
-BASE_DIR = globals.BASE_DIR
+BASE_DIR = "../../ai05-level1-project"
 JSON_PATH = f"{BASE_DIR}/train_combined.json"
 
 # 학습 및 테스트 데이터 경로
@@ -66,20 +67,115 @@ def main():
     """ # Annotation 파일 수집 및 통합 """
     train_data, all_json_files = process_annotation(TRAIN_ANN_DIR)
     update_dict = {
-        2339: [95, 630, 350, 425],
-        2101: [600, 708, 235, 451],
-        3679: [88, 864, 250, 230],
-        805: [620, 770, 226, 224],
-        2789: [590, 295, 210, 215],
-        568: [365, 852, 200, 200],
-        2374: [115, 853, 227, 226],
-        2430: [637, 203, 224, 219],
-        2778: [125, 770, 315, 275],
-    665: [567, 625, 311, 315],
-    972: [653, 889, 217, 217]
+        4020: [88, 864, 250, 230],
+        4281: [600, 708, 235, 451],
+        2737: [370, 190, 185, 195],
+        1585: [620, 770, 226, 224],
+        2535: [585, 290, 224, 219],
+        2054: [365, 852, 200, 200],
+        3812: [115, 853, 227, 226],
+        2288: [637, 203, 224, 219],
+        576: [125, 770, 315, 275],
+        2683: [567, 625, 311, 315],
+        3103: [653, 889, 217, 217],
     }
 
-    change_bboxes(JSON_PATH, update_dict)
+    def visualize_ann_ids(json_path, img_dir, ann_ids, cols=3, figsize=(15, 12)):
+        """
+        특정 ann_id 목록의 이미지들을 그 이미지의 모든 bbox와 함께 시각화.
+        - 지정 ann_id: 연두색 테두리
+        - 그 외 동일 이미지의 bbox: 빨간색 테두리
+        """
+        # 1) COCO 로드
+        with open(json_path, "r", encoding="utf-8") as f:
+            coco = json.load(f)
+
+        # 2) 인덱스 만들기
+        images_by_id = {im["id"]: im for im in coco["images"]}
+        anns_by_img = {}
+        ann_by_id = {}
+        for ann in coco["annotations"]:
+            ann_by_id[ann["id"]] = ann
+            anns_by_img.setdefault(ann["image_id"], []).append(ann)
+
+        # 3) ann_id → image_id 매핑, 유효한 것만 모으기
+        targets = []
+        missing = []
+        for aid in ann_ids:
+            a = ann_by_id.get(aid)
+            if a is None:
+                missing.append(aid)
+                continue
+            targets.append((aid, a["image_id"]))
+        if missing:
+            print(f"⚠️ 존재하지 않는 ann_id: {missing}")
+
+        # 4) image_id 기준으로 묶어서 한 번씩만 출력
+        image_ids = []
+        seen = set()
+        for _, img_id in targets:
+            if img_id not in seen:
+                seen.add(img_id)
+                image_ids.append(img_id)
+
+        if not image_ids:
+            print("표시할 이미지가 없습니다.")
+            return
+
+        rows = math.ceil(len(image_ids) / cols)
+        fig, axes = plt.subplots(rows, cols, figsize=figsize)
+        if rows == 1:
+            axes = [axes] if cols == 1 else axes.flatten()
+        else:
+            axes = axes.flatten()
+
+        for ax, img_id in zip(axes, image_ids):
+            im_meta = images_by_id[img_id]
+            file_name = im_meta["file_name"]
+            img_path = os.path.join(img_dir, file_name)
+
+            # 이미지 열기
+            if not os.path.exists(img_path):
+                ax.set_title(f"{file_name}\n(이미지 없음)", fontsize=10)
+                ax.axis("off")
+                continue
+
+            img = Image.open(img_path)
+            ax.imshow(img)
+            ax.axis("off")
+
+            # 이 이미지의 모든 anns
+            curr_anns = anns_by_img.get(img_id, [])
+
+            # 이 이미지에서 하이라이트해야 할 ann_id 집합
+            highlight_ids = {aid for aid, iid in targets if iid == img_id}
+
+            # 박스 그리기
+            for ann in curr_anns:
+                x, y, w, h = ann["bbox"]
+                edge = 'lime' if ann["id"] in highlight_ids else 'red'
+                rect = patches.Rectangle((x, y), w, h, linewidth=2, edgecolor=edge, facecolor='none')
+                ax.add_patch(rect)
+
+                # 간단 라벨
+                label = f"id:{ann['id']}"
+                ax.text(x, max(0, y - 5), label, color='yellow', fontsize=9, weight='bold')
+
+            ax.set_title(f"{file_name}\nimage_id={img_id}", fontsize=10)
+
+        # 남는 축 비우기
+        for i in range(len(image_ids), len(axes)):
+            axes[i].axis("off")
+
+        plt.tight_layout()
+        plt.show()
+
+    ann_ids = [4020, 4281, 2737, 1585, 2535, 2054, 3812, 2288, 576, 2683, 3103]
+    visualize_ann_ids(JSON_PATH, TRAIN_IMG_DIR, ann_ids)
+    change_bbox(JSON_PATH, update_dict)
+
+
+    visualize_ann_ids(JSON_PATH, TRAIN_IMG_DIR, ann_ids)
 
     """ # 데이터 탐색 """
     images_df, categories_df, annotations_df = search_data(train_data)
@@ -88,8 +184,8 @@ def main():
     #get_class_name_en(categories_df, images_df)
 
     ### FONT ###
-    set_font()
-    add_font()
+    # set_font()
+    # add_font()
 
     """ # 어노테이션 시각화 """
     process_visualize_annotations(images_df, categories_df, annotations_df)
@@ -571,14 +667,14 @@ def train_model(model, yaml_path):
 
 def result_model():
     # 한글 폰트 설정
-    plt.rcParams['font.family'] = globals.FONT_TYPE  ##'NanumBarunGothic'
-    plt.rcParams['axes.unicode_minus'] = False
-
-    # 폰트 경로 지정 (윈도우 기본 폰트 폴더)
-    font_path = globals.FONT_PATH
-
-    # FontProperties 객체 생성
-    font_prop = fm.FontProperties(fname=font_path, size=15)
+    # plt.rcParams['font.family'] = globals.FONT_TYPE  ##'NanumBarunGothic'
+    # plt.rcParams['axes.unicode_minus'] = False
+    #
+    # # 폰트 경로 지정 (윈도우 기본 폰트 폴더)
+    # font_path = globals.FONT_PATH
+    #
+    # # FontProperties 객체 생성
+    # font_prop = fm.FontProperties(fname=font_path, size=15)
 
     #font_name = fm.FontProperties(fname=font_path).get_name()
     #plt.rc('font', family=font_name)
@@ -598,7 +694,7 @@ def result_model():
         plt.figure(figsize=(14, 8))
         plt.imshow(img)
         plt.axis('off')
-        plt.title('학습 결과 (Loss, mAP, Precision, Recall)', fontsize=14, pad=10, fontproperties=font_prop)
+        plt.title('학습 결과 (Loss, mAP, Precision, Recall)', fontsize=14, pad=10)
         plt.tight_layout()
         plt.show()
     else:
@@ -612,7 +708,7 @@ def result_model():
         plt.figure(figsize=(12, 10))
         plt.imshow(img)
         plt.axis('off')
-        plt.title('혼동 행렬 (Confusion Matrix)', fontsize=14, pad=10, fontproperties=font_prop)
+        plt.title('혼동 행렬 (Confusion Matrix)', fontsize=14, pad=10)
         plt.tight_layout()
         plt.show()
     else:
@@ -626,7 +722,7 @@ def result_model():
         plt.figure(figsize=(10, 8))
         plt.imshow(img)
         plt.axis('off')
-        plt.title('정밀도 곡선 (Precision Curve)', fontsize=14, pad=10, fontproperties=font_prop)
+        plt.title('정밀도 곡선 (Precision Curve)', fontsize=14, pad=10)
         plt.tight_layout()
         plt.show()
     else:
@@ -640,7 +736,7 @@ def result_model():
         plt.figure(figsize=(10, 8))
         plt.imshow(img)
         plt.axis('off')
-        plt.title('F1 점수 곡선 (F1 Curve)', fontsize=14, pad=10, fontproperties=font_prop)
+        plt.title('F1 점수 곡선 (F1 Curve)', fontsize=14, pad=10)
         plt.tight_layout()
         plt.show()
     else:
@@ -654,7 +750,7 @@ def result_model():
         plt.figure(figsize=(10, 8))
         plt.imshow(img)
         plt.axis('off')
-        plt.title('정밀도-재현율 곡선 (PR Curve)', fontsize=14, pad=10, fontproperties=font_prop)
+        plt.title('정밀도-재현율 곡선 (PR Curve)', fontsize=14, pad=10)
         plt.tight_layout()
         plt.show()
     else:
@@ -668,7 +764,7 @@ def result_model():
         plt.figure(figsize=(16, 12))
         plt.imshow(img)
         plt.axis('off')
-        plt.title('검증 데이터 예측 결과', fontsize=14, pad=10, fontproperties=font_prop)
+        plt.title('검증 데이터 예측 결과', fontsize=14, pad=10)
         plt.tight_layout()
         plt.show()
     else:
@@ -740,11 +836,11 @@ def visualize_clean(img_path, model, device, conf_threshold=0.35, iou_threshold=
     draw = ImageDraw.Draw(img_pil)
 
     # 폰트 로드
-    try:
-        font = ImageFont.truetype(globals.FONT_PATH, 16)
-        #font = ImageFont.truetype('/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf', 16)
-    except:
-        font = ImageFont.load_default()
+    # try:
+    #     font = ImageFont.truetype(globals.FONT_PATH, 16)
+    #     #font = ImageFont.truetype('/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf', 16)
+    # except:
+    #     font = ImageFont.load_default()
 
     # 박스별로 위치 조정하여 겹침 방지
     boxes_info = []
@@ -781,7 +877,7 @@ def visualize_clean(img_path, model, device, conf_threshold=0.35, iou_threshold=
 
         # 라벨 위치 조정 (위쪽에 공간 없으면 아래로)
         label = f"{info['name']} {info['conf']:.2f}"
-        bbox = draw.textbbox((0, 0), label, font=font)
+        bbox = draw.textbbox((0, 0), label)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
 
@@ -799,7 +895,7 @@ def visualize_clean(img_path, model, device, conf_threshold=0.35, iou_threshold=
         draw.rectangle([x1, bg_y1, x1 + text_w + 6, bg_y2], fill=color)
 
         # 텍스트
-        draw.text((x1 + 3, text_y), label, fill=(255, 255, 255), font=font)
+        draw.text((x1 + 3, text_y), label, fill=(255, 255, 255))
 
     return np.array(img_pil)
 
