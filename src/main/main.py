@@ -56,6 +56,9 @@ def main():
     set_korean_font()
 
     """ main start """
+    # GPU 설정
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
 
     """ # 경로 확인 """
     check_datapath()
@@ -88,8 +91,8 @@ def main():
     #get_class_name_en(categories_df, images_df)
 
     ### FONT ###
-    set_font()
-    add_font()
+    #set_font()
+    #add_font()
 
     """ # 어노테이션 시각화 """
     process_visualize_annotations(images_df, categories_df, annotations_df)
@@ -121,10 +124,6 @@ def main():
 
     """ 모델 결과 """
     result_model()
-
-    # GPU 설정
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
 
     process_visualize_clean(model, val_images_df, device)
 
@@ -742,7 +741,6 @@ def visualize_clean(img_path, model, device, conf_threshold=0.35, iou_threshold=
     # 폰트 로드
     try:
         font = ImageFont.truetype(globals.FONT_PATH, 16)
-        #font = ImageFont.truetype('/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf', 16)
     except:
         font = ImageFont.load_default()
 
