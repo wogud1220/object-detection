@@ -50,10 +50,10 @@ def visualize_annotations(train_img_dir,
     print(f"🔍 Image ID {img_id} - {len(img_annotations)}개 객체 검출:")
 
     # 폰트 경로 지정 (윈도우 기본 폰트 폴더)
-    font_path = globals.FONT_PATH
+    # font_path = globals.FONT_PATH
 
     # FontProperties 객체 생성
-    font_prop = fm.FontProperties(fname=font_path, size=15)
+    # font_prop = fm.FontProperties(fname=font_path, size=15)
 
     for idx, (_, ann) in enumerate(img_annotations.iterrows()):
         bbox = ann['bbox']  # [x, y, width, height]
@@ -81,12 +81,12 @@ def visualize_annotations(train_img_dir,
         ax.text(bbox[0], bbox[1]-10, f'{category_name}',
                 color='white', fontsize=10, weight='bold',
                 bbox=dict(facecolor=color, alpha=0.8, pad=2),
-                fontproperties=font_prop
+
         )
 
     ax.axis('off')
     plt.title(f"Image ID: {img_id} | 객체 수: {len(img_annotations)}개\n{img_info['file_name']}",
-              fontsize=11, pad=10, fontproperties=font_prop)
+              fontsize=11, pad=10)
     plt.tight_layout()
     plt.show()
 
