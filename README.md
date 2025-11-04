@@ -66,15 +66,15 @@ object-detection/
 
 ## 🚀 주요 기능
 
-| 기능 | 설명                                                    |
-|------|-------------------------------------------------------|
-| **데이터 병합 및 검증** | JSON annotation들을 하나의 통합 DataFrame으로 병합하고 bbox 이상치 제거 |
-| **계층적 데이터 분할 (Stratified Split)** | 클래스 불균형을 고려한 train/val 분할                             |
-| **YOLO 데이터셋 변환** | COCO 형식 → YOLOv8 형식으로 자동 변환                           |
-| **YOLOv8 학습** | YOLOv8-M, YOLOv8-L 두 가지 모델 학습                         |
-| **Ensemble (WBF)** | Weighted Box Fusion으로 두 모델 결과 병합                      |
-| **TTA 적용** | Test Time Augmentation으로 mAP 향상                       |
-| **결과 시각화 및 분석** | Weight & bias를 통한 클래스별 mAP, Precision, Recall 등 시각화   |
+| 기능 | 설명                                                                                                                                            |
+|------|-----------------------------------------------------------------------------------------------------------------------------------------------|
+| **데이터 병합 및 검증** | JSON annotation들을 하나의 통합 DataFrame으로 병합하고 bbox 이상치 제거                                                                                         |
+| **계층적 데이터 분할 (Stratified Split)** | 클래스 불균형을 고려한 train/val 분할                                                                                                                     |
+| **YOLO 데이터셋 변환** | COCO 형식 → YOLOv8 형식으로 자동 변환                                                                                                                   |
+| **YOLOv8 학습** | YOLOv8-M, YOLOv8-L 두 가지 모델 학습                                                                                                                 |
+| **Ensemble (WBF)** | Weighted Box Fusion으로 두 모델 결과 병합                                                                                                              |
+| **TTA 적용** | Test Time Augmentation으로 mAP 향상                                                                                                               |
+| **결과 시각화 및 분석** | Weights & biases를 통한 클래스별 mAP, Precision, Recall 등 시각화<br/>Weights & Biases: https://wandb.ai/yoonwogud-lab/pill-detection?nw=nwuseryoonwogud |
 
 ---
 
