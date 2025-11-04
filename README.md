@@ -50,7 +50,8 @@ object-detection/
 │   │   ├── ensemble_wbf.py               # Weighted Box Fusion 앙상블
 │   │   ├── train_summary.py              # mAP 분석 및 결과 요약
 │   │   └── yolov8l.pt, yolov8m.pt        # 사전학습(pretrained) 모델
-│   │
+│   │   └── make_dataframe                # 데이터 프레임 생성
+|   |   └── make_csv                      # Kaggle 제출 csv 파일 생성
 │   └── __init__.py
 │
 ├── globals.py                            # 경로 상수(BASE_DIR 등)
@@ -73,7 +74,7 @@ object-detection/
 | **YOLO 데이터셋 변환** | COCO 형식 → YOLOv8 형식으로 자동 변환                                                                                                                   |
 | **YOLOv8 학습** | YOLOv8-M, YOLOv8-L 두 가지 모델 학습                                                                                                                 |
 | **Ensemble (WBF)** | Weighted Box Fusion으로 두 모델 결과 병합                                                                                                              |
-| **TTA 적용** | Test Time Augmentation으로 mAP 향상                                                                                                               |
+| **TTA 적용** | Test Time Augmentation으로 소폭 mAP 향상                                                                                                            |
 | **결과 시각화 및 분석** | Weights & biases를 통한 클래스별 mAP, Precision, Recall 등 시각화<br/>Weights & Biases: https://wandb.ai/yoonwogud-lab/pill-detection?nw=nwuseryoonwogud |
 
 ---
