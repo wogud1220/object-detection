@@ -93,6 +93,7 @@ object-detection/
 
 ```bash
 git clone https://github.com/wogud1220/object-detection.git
+kaggle competitions download -c ai05-level1-project
 cd object-detection
 python -m venv .venv
 source .venv/bin/activate     # (Windows: .venv\Scripts\activate)
