@@ -9,8 +9,9 @@ YOLOv8 기반의 **Object Detection (객체 탐지)** 모델을 학습하고,
 ---
 # 📝 협업 일지
 **윤재형:** https://www.notion.so/Daily-292dbba8701180e89946c1484d2d2f3a?source=copy_link<br>
-**전예린:** https://www.notion.so/1-Daily-2a1a85a71fed8049857ae25509e39e35?source=copy_link
-**이청수:** https://www.notion.so/Daily-29306271dc2a80e283aaea99537d8729
+**전예린:** https://www.notion.so/1-Daily-2a1a85a71fed8049857ae25509e39e35?source=copy_link<br>
+**이청수:** https://www.notion.so/Daily-29306271dc2a80e283aaea99537d8729<br>
+
 ---
 ## 📂 프로젝트 구조
 ```
